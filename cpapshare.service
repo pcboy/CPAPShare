@@ -1,0 +1,16 @@
+[Unit]
+Description=CPAPShare
+After=network.target udisks2.service
+Wants=udisks2.service
+
+[Service]
+Type=simple
+User=armbian
+ExecStart=/usr/bin/ruby /home/armbian/cpapshare/cpapshare.rb
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/cpapshare.log
+StandardError=append:/var/log/cpapshare.error.log
+
+[Install]
+WantedBy=multi-user.target
