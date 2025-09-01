@@ -60,16 +60,16 @@ sequenceDiagram
 ## Setting Things Up
 
 1. Flash [Armbian](https://www.armbian.com/) to your Orange Pi's MicroSD card
-2. Edit `/root/.not_logged_in_yet` . ([see Armbian docs](https://docs.armbian.com/User-Guide_Autoconfig/#sample-config-file)) 
-3. SSH into the device: `ssh root@YOUR_DEVICE_IP`
+2. Edit `/root/.not_logged_in_yet`. ([see Armbian docs](https://docs.armbian.com/User-Guide_Autoconfig/#sample-config-file)) (Username must be 'armbian'.)
+3. SSH into the device: `ssh armbian@YOUR_DEVICE_IP`
 4. Update system: 
 ```shell
-sudo apt update && sudo apt full-upgrade --yes && sudo reboot`
+sudo apt update && sudo apt full-upgrade --yes && sudo reboot
 ```
 5. install the dependencies:
 
 ```shell
-sudo apt install curl udisks2 policykit-1-gnome ruby ruby-dbus ruby-optimist
+sudo apt install curl git udisks2 policykit-1-gnome ruby ruby-dbus ruby-optimist
 ```
 
 6. Clone this repository with:
