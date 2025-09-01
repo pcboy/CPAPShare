@@ -305,8 +305,10 @@ if opts[:install]
   warn 'Warning: Failed to restart polkit' unless system('systemctl restart polkit')
 
 elsif opts[:uninstall]
-  File.delete(POLKIT_RULE_PATH) if File.exist?(POLKIT_RULE_PATH)
-  puts "Polkit rule uninstalled from #{POLKIT_RULE_PATH}" if File.exist?(POLKIT_RULE_PATH)
+  if File.exist?(POLKIT_RULE_PATH)
+    File.delete(POLKIT_RULE_PATH)
+    puts "Polkit rule uninstalled from #{POLKIT_RULE_PATH}"
+  end
 else
   begin
     loop do
