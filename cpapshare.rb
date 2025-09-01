@@ -86,7 +86,7 @@ class UsbBackup
     if File.exist?(CONFIG_FILE)
       puts "Configuration reloaded from #{CONFIG_FILE}"
     else
-      puts "Configuration file #{CONFIG_FILE} not found, using defaults"
+      warn "Configuration file #{CONFIG_FILE} not found, using defaults"
     end
     
     puts "Configuration:"
