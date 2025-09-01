@@ -6,6 +6,7 @@ require 'dbus'
 
 BACKUP_DIR = "/home/#{ENV['USER']}/cpapshare-data/".freeze
 POLKIT_RULE_PATH = '/etc/polkit-1/rules.d/10-udisks2.rules'.freeze
+SUDOERS_PATH = '/etc/sudoers.d/cpapshare'.freeze
 
 class UsbBackup
   def wait_for_mount!
@@ -27,11 +28,20 @@ class UsbBackup
           # Check if it's a filesystem
           puts 'Device is a filesystem and ready to be mounted!'
 
-          `udisksctl mount -b #{@device}`
-          File.foreach('/proc/mounts') do |line|
-            if line.start_with?(@device)
-              return @mount_point = line.split[1] # Return the mount point
-            end
+          # Create a mount point in /tmp
+          @mount_point = "/tmp/cpapshare_mount_#{Time.now.to_i}"
+          Dir.mkdir(@mount_point) unless Dir.exist?(@mount_point)
+          
+          # Mount with sudo (configured for NOPASSWD)
+          mount_cmd = "sudo mount #{@device} #{@mount_point}"
+          mount_result = `#{mount_cmd} 2>&1`
+          if $?.success?
+            puts "Successfully mounted #{@device} at #{@mount_point}"
+            return @mount_point
+          else
+            puts "Mount failed: #{mount_result.strip}"
+            Dir.rmdir(@mount_point) if Dir.exist?(@mount_point) && Dir.empty?(@mount_point)
+            return nil
           end
         end
       end
@@ -53,7 +63,17 @@ class UsbBackup
   def unmount_device
     puts 'Unmount sdcard'
 
-    `udisksctl unmount -b #{@device}`
+    # Unmount with sudo (configured for NOPASSWD)
+    umount_result = `sudo umount #{@mount_point} 2>&1`
+    if $?.success?
+      puts "Successfully unmounted #{@mount_point}"
+      # Clean up the temporary mount point
+      if @mount_point.start_with?('/tmp/cpapshare_mount_')
+        Dir.rmdir(@mount_point) if Dir.exist?(@mount_point) && Dir.empty?(@mount_point)
+      end
+    else
+      puts "Unmount failed: #{umount_result.strip}"
+    end
   end
 
   def run_callback
@@ -112,8 +132,16 @@ if opts[:install]
     polkit.addRule(function(action, subject) {
         if ((action.id == "org.freedesktop.udisks2.filesystem-mount-system" ||
              action.id == "org.freedesktop.udisks2.filesystem-mount-other-seat" ||
-             action.id == "org.freedesktop.udisks2.filesystem-mount") &&
-            subject.isInGroup("sudo")) {
+             action.id == "org.freedesktop.udisks2.filesystem-mount" ||
+             action.id == "org.freedesktop.udisks2.filesystem-unmount-others") &&
+            (subject.isInGroup("sudo") || subject.isInGroup("plugdev"))) {
+            return polkit.Result.YES;
+        }
+    });
+
+    polkit.addRule(function(action, subject) {
+        if (action.id == "org.freedesktop.udisks2.filesystem-mount" &&
+            subject.user == "armbian") {
             return polkit.Result.YES;
         }
     });
@@ -122,12 +150,26 @@ if opts[:install]
   File.write(POLKIT_RULE_PATH, polkit_rule)
   FileUtils.chmod(0o644, POLKIT_RULE_PATH)
   puts "Polkit rule installed to #{POLKIT_RULE_PATH}"
+  
+  # Create sudoers configuration for mount/unmount permissions
+  sudoers_rule = <<~EOS
+    # Allow armbian user to mount and unmount devices for cpapshare
+    armbian ALL=(ALL) NOPASSWD: /bin/mount, /bin/umount
+  EOS
+  
+  File.write(SUDOERS_PATH, sudoers_rule)
+  FileUtils.chmod(0o440, SUDOERS_PATH)
+  puts "Sudoers rule installed to #{SUDOERS_PATH}"
+  
   # Reload polkit rules
-  warn 'Warning: Failed to reload polkit rules' unless system('systemctl reload polkit')
+  warn 'Warning: Failed to restart polkit' unless system('systemctl restart polkit')
 
 elsif opts[:uninstall]
-  File.delete(POLKIT_RULE_PATH)
-  puts "Polkit rule uninstalled from #{POLKIT_RULE_PATH}"
+  File.delete(POLKIT_RULE_PATH) if File.exist?(POLKIT_RULE_PATH)
+  puts "Polkit rule uninstalled from #{POLKIT_RULE_PATH}" if File.exist?(POLKIT_RULE_PATH)
+  
+  File.delete(SUDOERS_PATH) if File.exist?(SUDOERS_PATH)
+  puts "Sudoers rule uninstalled from #{SUDOERS_PATH}" if File.exist?(SUDOERS_PATH)
 else
   begin
     loop do

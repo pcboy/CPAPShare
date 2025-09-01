@@ -6,6 +6,7 @@ Wants=udisks2.service
 [Service]
 Type=simple
 User=armbian
+Group=armbian
 ExecStart=/usr/bin/ruby /home/armbian/cpapshare/cpapshare.rb
 Restart=always
 RestartSec=5
