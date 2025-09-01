@@ -121,7 +121,7 @@ class UsbBackup
   def copy_raw
     puts "Performing raw copy of all files"
     begin
-      recursive_copy(@mount_point, BACKUP_DIR)
+      rsync_copy(@mount_point, BACKUP_DIR)
       puts "Raw copy completed successfully"
       return true
     rescue => e
@@ -174,7 +174,7 @@ class UsbBackup
     
     begin
       # Copy entire contents of the mount point to the destination
-      recursive_copy(@mount_point, dest_path)
+      rsync_copy(@mount_point, dest_path)
       puts "Dates-based copy completed successfully"
       return true
     rescue => e
@@ -248,20 +248,21 @@ class UsbBackup
 
   private
 
-  def recursive_copy(source, destination)
-    Dir.foreach(source) do |item|
-      next if ['.', '..'].include?(item)
-
-      source_path = File.join(source, item)
-      dest_path = File.join(destination, item)
-
-      if File.directory?(source_path)
-        FileUtils.mkdir_p(dest_path) unless Dir.exist?(dest_path)
-        recursive_copy(source_path, dest_path)
-      else
-        FileUtils.cp(source_path, dest_path)
-      end
+  def rsync_copy(source, destination)
+    # Ensure destination directory exists
+    FileUtils.mkdir_p(destination) unless Dir.exist?(destination)
+    
+    # Use rsync to copy files, preserving timestamps and only copying changed files
+    cmd = "rsync -ah --update --delete '#{source}/' '#{destination}/'"
+    
+    puts "Running rsync: #{cmd}"
+    success = system(cmd)
+    
+    unless success
+      raise "rsync failed with exit code #{$?.exitstatus}"
     end
+    
+    puts "rsync completed successfully"
   end
 end
 
