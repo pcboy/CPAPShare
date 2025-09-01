@@ -153,11 +153,17 @@ class UsbBackup
     first_date = date_dirs.first
     last_date = date_dirs.last
     
+    # Helper method to format date from YYYYMMDD to YYYY.MM.DD
+    def format_date(date_str)
+      return date_str unless date_str.length == 8 && date_str.match?(/^\d{8}$/)
+      "#{date_str[0..3]}.#{date_str[4..5]}.#{date_str[6..7]}"
+    end
+    
     # Create destination directory name
     if first_date == last_date
-      dest_dir_name = first_date
+      dest_dir_name = format_date(first_date)
     else
-      dest_dir_name = "#{first_date}-#{last_date}"
+      dest_dir_name = "#{format_date(first_date)}-#{format_date(last_date)}"
     end
     
     dest_path = File.join(BACKUP_DIR, dest_dir_name)
