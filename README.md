@@ -22,13 +22,25 @@ Instead of fancy expensive hardware, here's what I came up with:
 
 Sure, there are fancier solutions like SD card muxers (like the [USB-SD-Mux](https://linux-automation.com/en/products/usb-sd-mux-fast.html)), but they're expensive and probably overkill. Plus, who knows if they'd even work with a CPAP?
 
-### Hardware Requirements
+## Table of Contents
+
+- [Hardware Requirements](#hardware-requirements)
+- [Setting Things Up](#setting-things-up)
+- [Auto Start on boot (SystemD service)](#auto-start-on-boot-systemd-service)
+- [Callback on backup completion](#callback-on-backup-completion)
+- [Configuration](#configuration)
+- [Log Management](#log-management)
+- [Syncing to Your Computer](#syncing-to-your-computer)
+- [Final setup](#final-setup)
+
+
+## Hardware Requirements
 
 - [Orange Pi Zero 2W 1GB](https://www.aliexpress.com/item/1005005979335218.html) (or any Linux-capable single-board computer)
 - A USB SD card reader (I use [Vava USB-C hub](https://www.vava.com/products/vava-hub-p8-ii))
 - MicroSD card for the Orange Pi (I recommend [SanDisk Ultra A1 SDSQUAB-064G-GH3MA](https://www.amazon.co.jp/dp/B0CH2XQN3P)) 
 
-### Flow 
+## Flow 
 
 ```mermaid
 sequenceDiagram
