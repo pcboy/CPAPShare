@@ -29,7 +29,6 @@ Sure, there are fancier solutions like SD card muxers (like the [USB-SD-Mux](htt
 - [Auto Start on boot (SystemD service)](#auto-start-on-boot-systemd-service)
 - [Callback on backup completion](#callback-on-backup-completion)
 - [Configuration](#configuration)
-- [Log Management](#log-management)
 - [Syncing to Your Computer](#syncing-to-your-computer)
 - [Final setup](#final-setup)
 
