@@ -99,6 +99,53 @@ systemctl enable cpapshare.service
 The `cpapshare.rb` also has a mechanism to trigger some callback script after the backup is done. You simply need to have a file `post_backup.sh` in the same directory as the cpapshare.rb file.  
 Check example [post_backup.example.sh](./post_backup.example.sh), I'm using it to send a notification to [ntfy.sh](http://ntfy.sh), so I get notified on my phone when the backup is done. Make sure the script is executable.
 
+## Configuration
+
+CPAPShare can be configured using a `config.json` file in the project directory. The configuration is reloaded automatically each time an SD card is inserted, so no service restart is needed when changing settings.
+
+### Configuration Options
+
+Create a `config.json` file with the following options:
+
+```json
+{
+  "copy_type": "raw",
+  "delete_after_copy": false
+}
+```
+
+#### `copy_type`
+Controls how files are copied from the SD card:
+
+- **`"raw"`** (default): Copies all files and directories from the SD card directly to `~/cpapshare-data/`
+- **`"dates"`**: Looks for a `DATALOG` directory, finds the date range (e.g., `20250827` to `20250831`), and creates a backup directory named with the date range (e.g., `20250827-20250831`)
+
+#### `delete_after_copy`
+Controls whether to delete the DATALOG directory from the SD card after successful backup:
+
+- **`false`** (default): Keep all data on the SD card
+- **`true`**: Delete the `DATALOG` directory from the SD card after successful copy (⚠️ **Use with caution!**)
+
+### Example Configurations
+
+**Basic setup (copies everything, keeps original):**
+```json
+{
+  "copy_type": "raw",
+  "delete_after_copy": false
+}
+```
+
+**Date-organized backup with auto-cleanup:**
+```json
+{
+  "copy_type": "dates",
+  "delete_after_copy": true
+}
+```
+
+**Note:** If no `config.json` file exists, the script will use the defaults (`copy_type: "raw"`, `delete_after_copy: false`).
+
 ## Syncing to Your Computer
 
 I recommend using Syncthing - it's perfect for sharing the backup folder with your desktop:
