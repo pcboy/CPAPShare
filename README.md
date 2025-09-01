@@ -103,7 +103,9 @@ This adds a polkit config allowing members of the `sudo` group to mount devices.
 The project includes a SystemD service file ([cpapshare.service](./cpapshare.service)). To enable it:
 ```shell
 sudo cp cpapshare.service /etc/systemd/system/cpapshare.service
-systemctl enable cpapshare.service
+sudo systemctl enable cpapshare.service
+sudo systemctl restart cpapshare.service
+sudo systemctl status cpapshare.service
 ```
 
 ## Callback on backup completion
