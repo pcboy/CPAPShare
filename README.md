@@ -146,6 +146,41 @@ Controls whether to delete the DATALOG directory from the SD card after successf
 
 **Note:** If no `config.json` file exists, the script will use the defaults (`copy_type: "raw"`, `delete_after_copy: false`).
 
+## Log Management
+
+CPAPShare writes logs to `/var/log/cpapshare.log` and `/var/log/cpapshare.error.log`. To prevent these logs from growing indefinitely, you can set up logrotate to automatically manage them.
+
+Create a logrotate configuration file:
+
+```shell
+sudo tee /etc/logrotate.d/cpapshare << 'EOF'
+/var/log/cpapshare.log /var/log/cpapshare.error.log {
+    maxsize 50M
+    rotate 2
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 644 root root
+    postrotate
+        systemctl reload-or-restart cpapshare.service > /dev/null 2>&1 || true
+    endscript
+}
+EOF
+```
+
+This configuration:
+- Rotates logs when they exceed 50MB each (keeping total under 100MB for both log files)
+- Keeps 2 old log files (current + 2 rotated = max 150MB total)
+- Compresses old logs to save space
+- Restarts the service after rotation to ensure it writes to the new log file
+
+You can test the logrotate configuration:
+```shell
+sudo logrotate -d /etc/logrotate.d/cpapshare  # dry run
+sudo logrotate -f /etc/logrotate.d/cpapshare  # force rotation for testing
+```
+
 ## Syncing to Your Computer
 
 I recommend using Syncthing - it's perfect for sharing the backup folder with your desktop:
