@@ -135,8 +135,8 @@ class UsbBackup
     
     datalog_path = File.join(@mount_point, 'DATALOG')
     unless Dir.exist?(datalog_path)
-      puts "DATALOG directory not found, falling back to raw copy"
-      return copy_raw
+      puts "DATALOG directory not found, skipping copy"
+      return false
     end
 
     # Get all subdirectories in DATALOG and sort them as integers
@@ -146,8 +146,8 @@ class UsbBackup
                    .sort_by(&:to_i)
 
     if date_dirs.empty?
-      puts "No date directories found in DATALOG, falling back to raw copy"
-      return copy_raw
+      puts "No date directories found in DATALOG, skipping copy"
+      return false
     end
 
     first_date = date_dirs.first
