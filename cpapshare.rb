@@ -24,13 +24,13 @@ class UsbBackup
         config = {}
       end
     end
-    
+
     # Set default for copy_type if not present
-    config["copy_type"] ||= "raw"
-    
+    config['copy_type'] ||= 'raw'
+
     # Set default for delete_after_copy if not present
-    config["delete_after_copy"] = false if config["delete_after_copy"].nil?
-    
+    config['delete_after_copy'] = false if config['delete_after_copy'].nil?
+
     config
   end
 
@@ -64,7 +64,7 @@ class UsbBackup
                 return @mount_point
               end
             end
-            puts "Mount succeeded but could not find mount point"
+            puts 'Mount succeeded but could not find mount point'
             return nil
           else
             puts "Mount failed: #{mount_result.strip}"
@@ -82,150 +82,149 @@ class UsbBackup
   def copy_contents
     # Reload configuration fresh each time for immediate config changes
     @config = load_config
-    
+
     if File.exist?(CONFIG_FILE)
       puts "Configuration reloaded from #{CONFIG_FILE}"
     else
       warn "Configuration file #{CONFIG_FILE} not found, using defaults"
     end
-    
-    puts "Configuration:"
+
+    puts 'Configuration:'
     puts "\tcopy_type: #{@config['copy_type']}"
     puts "\tdelete_after_copy: #{@config['delete_after_copy']}"
-    
+
     puts "Copy sdcard contents to #{BACKUP_DIR}"
 
     FileUtils.mkdir_p(BACKUP_DIR) unless Dir.exist?(BACKUP_DIR)
 
     copy_success = false
     begin
-      case @config['copy_type']
-      when 'dates'
-        copy_success = copy_with_dates
-      else
-        copy_success = copy_raw
-      end
-      
+      copy_success = case @config['copy_type']
+                     when 'dates'
+                       copy_with_dates
+                     else
+                       copy_raw
+                     end
+
       # Delete DATALOG directory after successful copy if configured
-      if copy_success && @config['delete_after_copy']
-        delete_datalog_after_copy
-      end
-    rescue => e
+      delete_datalog_after_copy if copy_success && @config['delete_after_copy']
+    rescue StandardError => e
       puts "Error during copy operation: #{e.message}"
       copy_success = false
     end
-    
+
     copy_success
   end
 
   def copy_raw
-    puts "Performing raw copy of all files"
+    puts 'Performing raw copy of all files'
     begin
       rsync_copy(@mount_point, BACKUP_DIR)
-      puts "Raw copy completed successfully"
-      return true
-    rescue => e
+      puts 'Raw copy completed successfully'
+      true
+    rescue StandardError => e
       puts "Raw copy failed: #{e.message}"
-      return false
+      false
     end
   end
 
   def copy_with_dates
-    puts "Performing dates-based copy"
-    
+    puts 'Performing dates-based copy'
+
     datalog_path = File.join(@mount_point, 'DATALOG')
     unless Dir.exist?(datalog_path)
-      puts "DATALOG directory not found, skipping copy"
+      puts 'DATALOG directory not found, skipping copy'
       return false
     end
 
     # Get all subdirectories in DATALOG and sort them as integers
     date_dirs = Dir.entries(datalog_path)
                    .select { |entry| File.directory?(File.join(datalog_path, entry)) && entry != '.' && entry != '..' }
-                   .select { |entry| entry.match?(/^\d+$/) }  # Only numeric directory names
+                   .select { |entry| entry.match?(/^\d+$/) } # Only numeric directory names
                    .sort_by(&:to_i)
 
     if date_dirs.empty?
-      puts "No date directories found in DATALOG, skipping copy"
+      puts 'No date directories found in DATALOG, skipping copy'
       return false
     end
 
     first_date = date_dirs.first
     last_date = date_dirs.last
-    
+
     # Helper method to format date from YYYYMMDD to YYYY.MM.DD
     def format_date(date_str)
       return date_str unless date_str.length == 8 && date_str.match?(/^\d{8}$/)
+
       "#{date_str[0..3]}.#{date_str[4..5]}.#{date_str[6..7]}"
     end
-    
+
     # Create destination directory name
-    if first_date == last_date
-      dest_dir_name = format_date(first_date)
-    else
-      dest_dir_name = "#{format_date(first_date)}-#{format_date(last_date)}"
-    end
-    
+    dest_dir_name = if first_date == last_date
+                      format_date(first_date)
+                    else
+                      "#{format_date(first_date)}-#{format_date(last_date)}"
+                    end
+
     dest_path = File.join(BACKUP_DIR, dest_dir_name)
     puts "Creating backup directory: #{dest_dir_name}"
     puts "Date range: #{first_date} to #{last_date} (#{date_dirs.length} days)"
-    
+
     FileUtils.mkdir_p(dest_path) unless Dir.exist?(dest_path)
-    
+
     begin
       # Copy entire contents of the mount point to the destination
       rsync_copy(@mount_point, dest_path)
-      puts "Dates-based copy completed successfully"
-      return true
-    rescue => e
+      puts 'Dates-based copy completed successfully'
+      true
+    rescue StandardError => e
       puts "Dates-based copy failed: #{e.message}"
-      return false
+      false
     end
   end
 
   def delete_datalog_after_copy
     datalog_path = File.join(@mount_point, 'DATALOG')
-    
+
     unless Dir.exist?(datalog_path)
-      puts "DATALOG directory not found, skipping deletion"
+      puts 'DATALOG directory not found, skipping deletion'
       return
     end
-    
+
     # Check if mount point is writable by testing file creation
-    test_file = File.join(@mount_point, ".cpapshare_write_test")
+    test_file = File.join(@mount_point, '.cpapshare_write_test')
     begin
-      File.write(test_file, "test")
+      File.write(test_file, 'test')
       File.delete(test_file) if File.exist?(test_file)
-      puts "Mount point is writable, proceeding with deletion..."
-    rescue => e
+      puts 'Mount point is writable, proceeding with deletion...'
+    rescue StandardError => e
       puts "Mount point is not writable, cannot delete DATALOG: #{e.message}"
       puts "SD card may be mounted read-only or filesystem doesn't support deletion"
       return
     end
-    
-    puts "Deleting DATALOG directory from source after successful copy..."
+
+    puts 'Deleting DATALOG directory from source after successful copy...'
     begin
       # Use Ruby's FileUtils without sudo - this should work if mount is writable
       FileUtils.rm_rf(datalog_path)
-      
+
       # Verify deletion
       if Dir.exist?(datalog_path)
-        puts "Warning: DATALOG directory still exists after deletion attempt"
-        puts "This may be due to filesystem restrictions or the device being remounted read-only"
-        
+        puts 'Warning: DATALOG directory still exists after deletion attempt'
+        puts 'This may be due to filesystem restrictions or the device being remounted read-only'
+
         # Try to understand why deletion failed
         begin
-          entries = Dir.entries(datalog_path).reject { |e| e == '.' || e == '..' }
+          entries = Dir.entries(datalog_path).reject { |e| ['.', '..'].include?(e) }
           puts "Directory still contains #{entries.length} items: #{entries.first(3).join(', ')}#{entries.length > 3 ? '...' : ''}"
-        rescue => e
+        rescue StandardError => e
           puts "Could not read directory contents: #{e.message}"
         end
       else
-        puts "DATALOG directory successfully deleted from source"
+        puts 'DATALOG directory successfully deleted from source'
       end
-    rescue => e
+    rescue StandardError => e
       puts "Error deleting DATALOG directory: #{e.message}"
-      puts "This is likely due to filesystem permissions or read-only mount"
+      puts 'This is likely due to filesystem permissions or read-only mount'
     end
   end
 
@@ -251,18 +250,16 @@ class UsbBackup
   def rsync_copy(source, destination)
     # Ensure destination directory exists
     FileUtils.mkdir_p(destination) unless Dir.exist?(destination)
-    
+
     # Use rsync to copy files, preserving timestamps and only copying changed files
     cmd = "rsync -ah --update --delete '#{source}/' '#{destination}/'"
-    
+
     puts "Running rsync: #{cmd}"
     success = system(cmd)
-    
-    unless success
-      raise "rsync failed with exit code #{$?.exitstatus}"
-    end
-    
-    puts "rsync completed successfully"
+
+    raise "rsync failed with exit code #{$?.exitstatus}" unless success
+
+    puts 'rsync completed successfully'
   end
 end
 
