@@ -252,12 +252,13 @@ class UsbBackup
     FileUtils.mkdir_p(destination) unless Dir.exist?(destination)
 
     # Use rsync to copy files, preserving timestamps and only copying changed files
-    cmd = "rsync -ah --update --delete '#{source}/' '#{destination}/'"
+    cmd = ['rsync', '-ah', '--update', "#{source}/", "#{destination}/"]
 
-    puts "Running rsync: #{cmd}"
-    success = system(cmd)
+    puts "Running rsync: #{cmd.join(' ')}"
 
-    raise "rsync failed with exit code #{$?.exitstatus}" unless success
+    _, stderr, status = Open3.capture3(*cmd)
+
+    raise "rsync failed with exit code #{status.exitstatus}: #{stderr}" unless status.success?
 
     puts 'rsync completed successfully'
   end
