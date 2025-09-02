@@ -92,7 +92,7 @@ git clone https://github.com/pcboy/cpapshare ~/cpapshare
 7. If you can't mount devices as user `armbian`, that means you are missing the polkit policy. In that case do:
 
 ```shell
-sudo cpapshare.rb --install
+sudo ./cpapshare.rb --install
 ```
 
 This adds a polkit config allowing members of the `sudo` group to mount devices.
