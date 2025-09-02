@@ -110,7 +110,7 @@ sudo systemctl enable --now cpapshare.service
 The `cpapshare.rb` also has a mechanism to trigger some callback script after the backup is done. You simply need to have a file `post_backup.sh` in the same directory as the cpapshare.rb file.  
 Check example [post_backup.example.sh](./post_backup.example.sh), I'm using it to send a notification to [ntfy.sh](http://ntfy.sh), so I get notified on my phone when the backup is done. Make sure the script is executable.
 
-## Configuration
+## Configuration (optional)
 
 CPAPShare can be configured using a `config.json` file in the project directory. The configuration is reloaded automatically each time an SD card is inserted, so no service restart is needed when changing settings.
 
