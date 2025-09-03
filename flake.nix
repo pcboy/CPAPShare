@@ -13,12 +13,24 @@
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        gems = pkgs.bundlerEnv {
+          name = "cpap-gems";
+          ruby = pkgs.ruby_3_4;
+          gemdir = ./.;
+        };
       in
       {
         devShells.default = pkgs.mkShell {
-          packages = [
+          packages = with pkgs; [
             pkgs.bashInteractive
-            pkgs.ruby_3_3
+            gems
+            (lowPrio gems.wrappedRuby)
+            (bundix.override {
+              bundler = bundler.override {
+                ruby = gems.ruby;
+              };
+            })
+
           ];
         };
       }
