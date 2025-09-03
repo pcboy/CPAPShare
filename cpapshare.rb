@@ -4,32 +4,31 @@ require 'fileutils'
 require 'optimist'
 require 'dbus'
 require 'json'
+require 'open3'
+require 'date'
+
+class MountError < StandardError; end
 
 BACKUP_DIR = "/home/#{ENV['USER']}/cpapshare-data/".freeze
 POLKIT_RULE_PATH = '/etc/polkit-1/rules.d/10-udisks2.rules'.freeze
 CONFIG_FILE = "#{File.dirname File.absolute_path(__FILE__)}/config.json".freeze
 
 class UsbBackup
-  def initialize
-    # Don't load config at startup, load it fresh each time
-  end
-
   def load_config
-    config = {}
-    if File.exist?(CONFIG_FILE)
-      begin
-        config = JSON.parse(File.read(CONFIG_FILE))
-      rescue JSON::ParserError => e
-        puts "Warning: Invalid JSON in config file, using defaults: #{e.message}"
-        config = {}
-      end
+    config = { 'copy_type' => 'raw' }
+
+    unless File.exist?(CONFIG_FILE)
+      warn "Configuration file #{CONFIG_FILE} not found, using defaults"
+      return config
     end
 
-    # Set default for copy_type if not present
-    config['copy_type'] ||= 'raw'
+    puts "Reloading configuration from #{CONFIG_FILE}"
 
-    # Set default for delete_after_copy if not present
-    config['delete_after_copy'] = false if config['delete_after_copy'].nil?
+    begin
+      config.merge!(JSON.parse(File.read(CONFIG_FILE)))
+    rescue JSON::ParserError => e
+      puts "Warning: Invalid JSON in config file, using defaults: #{e.message}"
+    end
 
     config
   end
@@ -53,26 +52,26 @@ class UsbBackup
           # Check if it's a filesystem
           puts 'Device is a filesystem and ready to be mounted!'
 
-          # Use udisksctl to mount the device
-          mount_result = `udisksctl mount -b #{@device}`
-          if $?.success?
-            # Find the mount point from /proc/mounts
-            File.foreach('/proc/mounts') do |line|
-              if line.start_with?(@device)
-                @mount_point = line.split[1] # Get the mount point
-                puts "Successfully mounted #{@device} at #{@mount_point}"
-                return @mount_point
-              end
-            end
-            puts 'Mount succeeded but could not find mount point'
-            return nil
-          else
-            puts "Mount failed: #{mount_result.strip}"
-            return nil
+          _, stderr, status = Open3.capture3('udisksctl', 'mount', '-b', @device)
+
+          unless status.success?
+            puts "Mount failed: #{stderr.strip}"
+            raise MountError, "Failed to mount device #{@device}: #{stderr.strip}"
           end
+
+          # Find the mount point from /proc/mounts
+          File.foreach('/proc/mounts') do |line|
+            if line.start_with?(@device)
+              @mount_point = line.split[1] # Get the mount point
+              puts "Successfully mounted #{@device} at #{@mount_point}"
+              return @mount_point
+            end
+          end
+          raise MountError, "Mount succeeded but could not find mount point for #{@device}"
         end
       end
     end
+
     # Main loop to keep the script running
     main = DBus::Main.new
     main << bus
@@ -83,37 +82,13 @@ class UsbBackup
     # Reload configuration fresh each time for immediate config changes
     @config = load_config
 
-    if File.exist?(CONFIG_FILE)
-      puts "Configuration reloaded from #{CONFIG_FILE}"
-    else
-      warn "Configuration file #{CONFIG_FILE} not found, using defaults"
-    end
-
-    puts 'Configuration:'
-    puts "\tcopy_type: #{@config['copy_type']}"
-    puts "\tdelete_after_copy: #{@config['delete_after_copy']}"
-
     puts "Copy sdcard contents to #{BACKUP_DIR}"
 
     FileUtils.mkdir_p(BACKUP_DIR) unless Dir.exist?(BACKUP_DIR)
 
-    copy_success = false
-    begin
-      copy_success = case @config['copy_type']
-                     when 'dates'
-                       copy_with_dates
-                     else
-                       copy_raw
-                     end
+    return copy_with_dates if @config['copy_type'] == 'dates'
 
-      # Delete DATALOG directory after successful copy if configured
-      delete_datalog_after_copy if copy_success && @config['delete_after_copy']
-    rescue StandardError => e
-      puts "Error during copy operation: #{e.message}"
-      copy_success = false
-    end
-
-    copy_success
+    copy_raw if @config['copy_type'] == 'raw'
   end
 
   def copy_raw
@@ -133,110 +108,80 @@ class UsbBackup
 
     datalog_path = File.join(@mount_point, 'DATALOG')
     unless Dir.exist?(datalog_path)
-      puts 'DATALOG directory not found, skipping copy'
+      warn 'DATALOG directory not found, not a Resmed sdcard skipping copy'
       return false
     end
 
-    # Get all subdirectories in DATALOG and sort them as integers
-    date_dirs = Dir.entries(datalog_path)
-                   .select { |entry| File.directory?(File.join(datalog_path, entry)) && entry != '.' && entry != '..' }
-                   .select { |entry| entry.match?(/^\d+$/) } # Only numeric directory names
-                   .sort_by(&:to_i)
+    source_date_dirs = Dir.glob(File.join(datalog_path, '*'))
+                          .select { |path| File.directory?(path) }
+                          .map { |path| File.basename(path) }
+                          .select { |entry| entry.match?(/^\d{8}$/) } # Match YYYYMMDD
+                          .map { |date_str| DateTime.parse(date_str) }
+                          .sort
 
-    if date_dirs.empty?
-      puts 'No date directories found in DATALOG, skipping copy'
+    if source_date_dirs.empty?
+      warn 'No date directories found in DATALOG, skipping copy'
       return false
     end
 
-    first_date = date_dirs.first
-    last_date = date_dirs.last
+    # Matches YYYY-MM-DD...
+    last_saved_date =
+      if Dir.exist?(BACKUP_DIR)
+        Dir.entries(BACKUP_DIR)
+           .select { |entry| File.directory?(File.join(BACKUP_DIR, entry)) }
+           .select { |entry| entry.match?(/^\d{4}-\d{2}-\d{2}/) } # Matches YYYY-MM-DD...
+           .flat_map { |dir_name| dir_name.split('_') }
+           .map { |date_str| DateTime.parse(date_str) }
+           .max
+      end
+    last_saved_date ||= DateTime.new(1970, 1, 1)
 
-    # Helper method to format date from YYYYMMDD to YYYY.MM.DD
-    def format_date(date_str)
-      return date_str unless date_str.length == 8 && date_str.match?(/^\d{8}$/)
+    puts "Last saved date: #{last_saved_date.to_date.iso8601}"
+    # Filter date directories to only include new ones
+    fresh_dirs = if last_saved_date
+                   source_date_dirs.select do |dir_date|
+                     dir_date > last_saved_date
+                   end
+                 else
+                   source_date_dirs
+                 end || []
 
-      "#{date_str[0..3]}.#{date_str[4..5]}.#{date_str[6..7]}"
+    if fresh_dirs.empty?
+      warn 'No new dates found, skipping copy'
+      return
     end
 
-    # Create destination directory name
+    first_date = fresh_dirs.first
+    last_date = fresh_dirs.last
+
     dest_dir_name = if first_date == last_date
-                      format_date(first_date)
+                      first_date.to_date.iso8601
                     else
-                      "#{format_date(first_date)}-#{format_date(last_date)}"
+                      "#{first_date.to_date.iso8601}_#{last_date.to_date.iso8601}"
                     end
 
     dest_path = File.join(BACKUP_DIR, dest_dir_name)
     puts "Creating backup directory: #{dest_dir_name}"
-    puts "Date range: #{first_date} to #{last_date} (#{date_dirs.length} days)"
+    puts "Date range: #{first_date.to_date.iso8601} to #{last_date.to_date.iso8601} (#{fresh_dirs.length} new days)"
 
     FileUtils.mkdir_p(dest_path) unless Dir.exist?(dest_path)
 
     begin
-      # Copy entire contents of the mount point to the destination
-      rsync_copy(@mount_point, dest_path)
+      copy_with_filter(@mount_point, dest_path, last_saved_date)
       puts 'Dates-based copy completed successfully'
-      true
     rescue StandardError => e
-      puts "Dates-based copy failed: #{e.message}"
-      false
-    end
-  end
-
-  def delete_datalog_after_copy
-    datalog_path = File.join(@mount_point, 'DATALOG')
-
-    unless Dir.exist?(datalog_path)
-      puts 'DATALOG directory not found, skipping deletion'
-      return
-    end
-
-    # Check if mount point is writable by testing file creation
-    test_file = File.join(@mount_point, '.cpapshare_write_test')
-    begin
-      File.write(test_file, 'test')
-      File.delete(test_file) if File.exist?(test_file)
-      puts 'Mount point is writable, proceeding with deletion...'
-    rescue StandardError => e
-      puts "Mount point is not writable, cannot delete DATALOG: #{e.message}"
-      puts "SD card may be mounted read-only or filesystem doesn't support deletion"
-      return
-    end
-
-    puts 'Deleting DATALOG directory from source after successful copy...'
-    begin
-      # Use Ruby's FileUtils without sudo - this should work if mount is writable
-      FileUtils.rm_rf(datalog_path)
-
-      # Verify deletion
-      if Dir.exist?(datalog_path)
-        puts 'Warning: DATALOG directory still exists after deletion attempt'
-        puts 'This may be due to filesystem restrictions or the device being remounted read-only'
-
-        # Try to understand why deletion failed
-        begin
-          entries = Dir.entries(datalog_path).reject { |e| ['.', '..'].include?(e) }
-          puts "Directory still contains #{entries.length} items: #{entries.first(3).join(', ')}#{entries.length > 3 ? '...' : ''}"
-        rescue StandardError => e
-          puts "Could not read directory contents: #{e.message}"
-        end
-      else
-        puts 'DATALOG directory successfully deleted from source'
-      end
-    rescue StandardError => e
-      puts "Error deleting DATALOG directory: #{e.message}"
-      puts 'This is likely due to filesystem permissions or read-only mount'
+      warn "Dates-based copy failed: #{e.message}"
     end
   end
 
   def unmount_device
     puts 'Unmount sdcard'
 
-    # Use udisksctl to unmount the device
-    umount_result = `udisksctl unmount -b #{@device}`
-    if $?.success?
+    _, stderr, status = Open3.capture3('udisksctl', 'unmount', '-b', @device)
+    if status.success?
       puts "Successfully unmounted #{@device}"
     else
-      puts "Unmount failed: #{umount_result.strip}"
+      warn "Unmount failed: #{stderr.strip}"
     end
   end
 
@@ -248,10 +193,10 @@ class UsbBackup
   private
 
   def rsync_copy(source, destination)
-    # Ensure destination directory exists
+    raise 'Source or Destination incorrect' if source.strip.empty? || destination.strip.empty?
+
     FileUtils.mkdir_p(destination) unless Dir.exist?(destination)
 
-    # Use rsync to copy files, preserving timestamps and only copying changed files
     cmd = ['rsync', '-ah', '--update', "#{source}/", "#{destination}/"]
 
     puts "Running rsync: #{cmd.join(' ')}"
@@ -261,6 +206,39 @@ class UsbBackup
     raise "rsync failed with exit code #{status.exitstatus}: #{stderr}" unless status.success?
 
     puts 'rsync completed successfully'
+  end
+
+  def copy_with_filter(source, destination, last_saved_date = nil)
+    FileUtils.mkdir_p(destination) unless Dir.exist?(destination)
+
+    copy_directory_filtered(source, destination, last_saved_date)
+  end
+
+  def copy_directory_filtered(source, destination, last_saved_date = nil, relative_path = '')
+    Dir.foreach(source) do |entry|
+      next if ['.', '..'].include?(entry)
+
+      source_path = File.join(source, entry)
+      dest_path = File.join(destination, entry)
+      entry_relative_path = File.join(relative_path, entry)
+
+      if relative_path == '/DATALOG'
+        match = source_path.match(%r{^.*DATALOG/(\d+)$})
+        next unless match && match[1]
+
+        if DateTime.parse(match[1]) <= last_saved_date
+          puts "Skipping old DATALOG folder: #{entry}"
+          next
+        end
+      end
+
+      if File.directory?(source_path)
+        FileUtils.mkdir_p(dest_path) unless Dir.exist?(dest_path)
+        copy_directory_filtered(source_path, dest_path, last_saved_date, entry_relative_path)
+      elsif !File.exist?(dest_path) || File.mtime(source_path) > File.mtime(dest_path)
+        FileUtils.cp(source_path, dest_path)
+      end
+    end
   end
 end
 
@@ -321,6 +299,8 @@ else
       backup.copy_contents
       backup.unmount_device
       backup.run_callback
+    rescue MountError => e
+      puts "Mount error: #{e.message}"
     end
   rescue Interrupt
     puts 'Stopping CPAPShare...'

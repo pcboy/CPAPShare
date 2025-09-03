@@ -120,8 +120,7 @@ Create a `config.json` file with the following options:
 
 ```json
 {
-  "copy_type": "raw",
-  "delete_after_copy": false
+  "copy_type": "raw"
 }
 ```
 
@@ -129,33 +128,9 @@ Create a `config.json` file with the following options:
 Controls how files are copied from the SD card:
 
 - **`"raw"`** (default): Copies all files and directories from the SD card directly to `~/cpapshare-data/`
-- **`"dates"`**: Looks for a `DATALOG` directory, finds the date range (e.g., `20250827` to `20250831`), and creates a backup directory named with the date range (e.g., `20250827-20250831`)
+- **`"dates"`**: (ResMed machines only) Looks for a `DATALOG` directory, identifies *new* date folders (based on the latest backup in `~/cpapshare-data/`), and creates a new backup directory named `first_new_date_last_new_date` (e.g., `2025-08-27_2025-08-31`). This new directory will contain only the new date folders and a complete copy of the rest of the SD card. This is useful for services like SleepHQ that require a full SD card backup but you only want to upload the new data.
 
-#### `delete_after_copy`
-Controls whether to delete the DATALOG directory from the SD card after successful backup:
-
-- **`false`** (default): Keep all data on the SD card
-- **`true`**: Delete the `DATALOG` directory from the SD card after successful copy (⚠️ **Use with caution!**)
-
-### Example Configurations
-
-**Basic setup (copies everything, keeps original):**
-```json
-{
-  "copy_type": "raw",
-  "delete_after_copy": false
-}
-```
-
-**Date-organized backup with auto-cleanup:**
-```json
-{
-  "copy_type": "dates",
-  "delete_after_copy": true
-}
-```
-
-**Note:** If no `config.json` file exists, the script will use the defaults (`copy_type: "raw"`, `delete_after_copy: false`).
+**Note:** If no `config.json` file exists, the script will use the defaults (`{copy_type: "raw"}`).
 
 ## Troubleshooting
 
