@@ -1,4 +1,3 @@
 {
-  "copy_type": "raw",
-  "delete_after_copy": false
+  "copy_type": "raw"
 }
