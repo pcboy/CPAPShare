@@ -115,7 +115,7 @@ class UsbBackup
     source_date_dirs = Dir.glob(File.join(datalog_path, '*'))
                           .select { |path| File.directory?(path) }
                           .map { |path| File.basename(path) }
-                          .select { |entry| entry.match?(/^\d{8}$/) } # Match YYYYMMDD
+                          .select { |entry| entry.match?(/^\d+$/) } # Match YYYYMMDD
                           .map { |date_str| DateTime.parse(date_str) }
                           .sort
 
@@ -201,11 +201,10 @@ class UsbBackup
     puts 'Unmount sdcard'
 
     _, stderr, status = Open3.capture3('udisksctl', 'unmount', '-b', @device)
-    if status.success?
-      puts "Successfully unmounted #{@device}"
-    else
-      warn "Unmount failed: #{stderr.strip}"
-    end
+
+    puts "Successfully unmounted #{@device}" and return true if status.success?
+
+    warn "Unmount failed: #{stderr.strip}" and return false
   end
 
   def run_callback
@@ -220,7 +219,16 @@ class UsbBackup
 
     FileUtils.mkdir_p(destination) unless Dir.exist?(destination)
 
-    cmd = ['rsync', '-ah', '--update', "#{source}/", "#{destination}/"]
+    cmd = ['rsync', '-ah', '--update']
+
+    if @config['exclude']
+      @config['exclude'].each do |exclude_path|
+        cmd << "--exclude=#{exclude_path}"
+      end
+    end
+
+    cmd << "#{source}/"
+    cmd << "#{destination}/"
 
     puts "Running rsync: #{cmd.join(' ')}"
 
@@ -254,9 +262,15 @@ class UsbBackup
 
       source_path = File.join(source, entry)
       dest_path = File.join(destination, entry)
-      entry_relative_path = File.join(relative_path, entry)
 
-      if relative_path == '/DATALOG' && date_range
+      relative_path.gsub!(%r{^/}, '')
+      entry_relative_path = File.join(relative_path, entry).gsub(%r{^/}, '')
+
+      next if @config['exclude'] && @config['exclude'].any? do |pattern|
+        File.fnmatch?(pattern, entry_relative_path)
+      end
+
+      if relative_path == 'DATALOG' && date_range
         match = source_path.match(%r{^.*DATALOG/(\d+)$})
         if match && match[1]
           folder_date = DateTime.parse(match[1])

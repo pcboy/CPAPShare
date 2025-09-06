@@ -10,7 +10,12 @@ RSpec.describe UsbBackup do
   let(:datalog_path) { File.join(source_dir, 'DATALOG') }
 
   before do
-    backup.instance_variable_set(:@config, { 'copy_type' => 'dates' })
+    allow(backup).to receive(:load_config).and_return(
+      {
+        'copy_type' => 'dates',
+        'exclude' => ['UNWANTED_FOLDER', 'LOGS', 'config.ini']
+      }
+    )
     backup.instance_variable_set(:@mount_point, source_dir)
     stub_const('UsbBackup::BACKUP_DIR', dest_dir)
   end
@@ -82,6 +87,16 @@ RSpec.describe UsbBackup do
   def expect_file_not_exists_in_backup(backup_dir_name, relative_path)
     full_path = File.join(dest_dir, backup_dir_name, relative_path)
     expect(File).not_to exist(full_path), "Expected file to NOT exist: #{relative_path} in backup #{backup_dir_name}"
+  end
+
+  def expect_file_exists_in_raw_backup(relative_path)
+    full_path = File.join(dest_dir, relative_path)
+    expect(File).to exist(full_path), "Expected file to exist: #{relative_path} in backup"
+  end
+
+  def expect_file_not_exists_in_raw_backup(relative_path)
+    full_path = File.join(dest_dir, relative_path)
+    expect(File).not_to exist(full_path), "Expected file to NOT exist: #{relative_path} in backup"
   end
 
   describe '#copy_with_dates' do
@@ -191,6 +206,88 @@ RSpec.describe UsbBackup do
 
         # It should not copy the older directory that was already backed up with no changes
         expect_file_not_exists_in_backup('2025-08-20_2025-08-21', 'DATALOG/20250819')
+      end
+    end
+
+    context 'when source contains excluded folders and files' do
+      before do
+        allow(backup).to receive(:load_config).and_return(
+          {
+            'copy_type' => 'dates',
+            'exclude' => ['System Volume Information', 'LOGS', 'config.ini']
+          }
+        )
+
+        create_source_structure
+
+        # Create excluded folders
+        FileUtils.mkdir_p(File.join(source_dir, 'System Volume Information'))
+        File.write(File.join(source_dir, 'System Volume Information', 'unwanted_file.txt'), 'Should not be copied')
+
+        FileUtils.mkdir_p(File.join(source_dir, 'LOGS'))
+        File.write(File.join(source_dir, 'LOGS', 'system.log'), 'Should not be copied')
+
+        # Create excluded files in root
+        File.write(File.join(source_dir, 'config.ini'), 'Should not be copied')
+      end
+
+      it 'only copies whitelisted folders and files' do
+        backup.copy_contents
+
+        backup_dirs = backup_directories
+        expect(backup_dirs.size).to eq(1)
+        backup_dir = backup_dirs.first
+
+        expect_file_exists_in_backup(backup_dir, 'Identification.crc')
+        expect_file_exists_in_backup(backup_dir, 'STR.edf')
+        expect_file_exists_in_backup(backup_dir, 'DATALOG')
+        expect_file_exists_in_backup(backup_dir, 'DATALOG/20250711')
+        expect_file_exists_in_backup(backup_dir, 'DATALOG/20250819')
+        expect_file_exists_in_backup(backup_dir, 'DATALOG/20250820')
+
+        expect_file_not_exists_in_backup(backup_dir, 'System Volume Information')
+        expect_file_not_exists_in_backup(backup_dir, 'LOGS')
+        expect_file_not_exists_in_backup(backup_dir, 'config.ini')
+      end
+    end
+  end
+
+  describe '#copy_raw' do
+    context 'when source contains excluded folders with spaces' do
+      before do
+        allow(backup).to receive(:load_config).and_return(
+          {
+            'copy_type' => 'raw',
+            'exclude' => ['System Volume Information', 'LOGS', 'config.ini']
+          }
+        )
+
+        create_source_structure
+
+        # Create excluded folders
+        FileUtils.mkdir_p(File.join(source_dir, 'System Volume Information'))
+        File.write(File.join(source_dir, 'System Volume Information', 'unwanted_file.txt'), 'Should not be copied')
+
+        FileUtils.mkdir_p(File.join(source_dir, 'LOGS'))
+        File.write(File.join(source_dir, 'LOGS', 'system.log'), 'Should not be copied')
+
+        # Create excluded files in root
+        File.write(File.join(source_dir, 'config.ini'), 'Should not be copied')
+      end
+
+      it 'only copies whitelisted folders and files' do
+        backup.copy_contents
+
+        expect_file_exists_in_raw_backup('Identification.crc')
+        expect_file_exists_in_raw_backup('STR.edf')
+        expect_file_exists_in_raw_backup('DATALOG')
+        expect_file_exists_in_raw_backup('DATALOG/20250711')
+        expect_file_exists_in_raw_backup('DATALOG/20250819')
+        expect_file_exists_in_raw_backup('DATALOG/20250820')
+
+        expect_file_not_exists_in_raw_backup('System Volume Information')
+        expect_file_not_exists_in_raw_backup('LOGS')
+        expect_file_not_exists_in_raw_backup('config.ini')
       end
     end
   end

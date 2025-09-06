@@ -1,3 +1,4 @@
 {
-  "copy_type": "raw"
+  "copy_type": "raw",
+  "exclude": ["System Volume Information", "*.log"]
 }
