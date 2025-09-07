@@ -124,7 +124,9 @@ Check example [post_backup.example.sh](./post_backup.example.sh), I'm using it t
 
 ## Configuration (optional)
 
-CPAPShare can be configured using a `config.json` file in the project directory. The configuration is reloaded automatically each time an SD card is inserted, so no service restart is needed when changing settings.
+CPAPShare can be configured using a `config.json` file located at `~/.config/cpapshare/config.json`. The configuration is reloaded automatically each time an SD card is inserted, so no service restart is needed when changing settings.
+
+If the file does not exist, the script will use default settings (`{copy_type: "raw"}`).
 
 ### Configuration Options
 
@@ -153,8 +155,6 @@ Examples:
 - `"System Volume Information"` - excludes a specific directory
 - `"*.log"` - excludes all files with the .log extension
 - `"config.ini"` - excludes a specific file
-
-**Note:** If no `config.json` file exists, the script will use the defaults (`{copy_type: "raw"}`).
 
 ## Troubleshooting
 

@@ -11,7 +11,7 @@ class MountError < StandardError; end
 
 BACKUP_DIR = "/home/#{ENV['USER']}/cpapshare-data/".freeze
 POLKIT_RULE_PATH = '/etc/polkit-1/rules.d/10-udisks2.rules'.freeze
-CONFIG_FILE = "#{File.dirname File.absolute_path(__FILE__)}/config.json".freeze
+CONFIG_FILE = "#{ENV['HOME']}/.config/cpapshare/config.json".freeze
 
 class UsbBackup
   def load_config
