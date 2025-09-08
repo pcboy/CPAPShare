@@ -1,4 +1,8 @@
 source 'https://rubygems.org'
 
-gem 'dbus'
+gem 'ruby-dbus'
 gem 'optimist'
+
+group :development do 
+  gem 'rspec'
+end
